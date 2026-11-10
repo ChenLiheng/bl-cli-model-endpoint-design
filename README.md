@@ -9,5 +9,6 @@ bailian-cli（`bl`）相关的设计与评估文档。
 | [agent-friendly-cli-evaluation.md](agent-friendly-cli-evaluation.md) | CLI 的 Agent 友好度评估标准（ACF Score），及 bailian-cli 评估与优化建议 |
 | [bailian-cli-code-review.md](bailian-cli-code-review.md) | 代码审查：疑似 Bug（含复现步骤）、设计问题与优化点 |
 | [freetier-autostop-guard-review.md](freetier-autostop-guard-review.md) | 分支审查：`feat/freetier-autostop-guard`（`30f32bbe`）的问题与解决方案 |
+| [telemetry-device-id-persistence.md](telemetry-device-id-persistence.md) | 实施方案：遥测 `device_id` 改为本地持久化 UUID，含参考实现对比、完整代码与测试改动 |
 
 代码基线：`modelstudioai/cli` main `cadc301d`（v2.8.4）。状态：讨论稿。
