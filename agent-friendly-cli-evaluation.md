@@ -11,7 +11,7 @@
     - 根级 `--introspect` 有 1,062,846 字节，约 30 万 token；`--help` 有 38 KB，在非 TTY 下也带 ASCII 横幅，且写到 stderr。
     - 非 TTY 下默认输出仍是 text。
     - 大版本差距时会自动升级自身。
-    - 错误对象只有数字码，没有稳定的字符串错误类型。
+    - 本地错误只有数字码，没有稳定的字符串错误类型；服务端错误的退出码一律为 1。
 - 有 6 项 P0 优化，改动都集中在 runtime 层，不涉及业务命令，见文末「优化建议」。
 
 ## 一、为什么需要一个标准
@@ -207,7 +207,7 @@ L3 建议的核心指标：
 | F1 | 根级 `--introspect` 过大 | `bl --introspect` 有 1,062,846 字节，共 334 个命令，每段描述都同时包含 en-US 和 zh-CN | Agent 只要不小心执行一次根级 introspect，就会占掉大半个上下文窗口，甚至被截断 |
 | F2 | `--help` 写 stderr，且非 TTY 下仍有横幅 | `bl --help 2>/dev/null` 输出 0 字节；`2>&1` 后有 38,223 字节，其中 5 行是 ASCII 横幅 | 很多 Agent 框架默认只取 stdout，会拿到空结果；横幅白白消耗 token |
 | F3 | 非 TTY 默认输出 text | `detectOutputFormat()` 在未指定时返回 `"text"`（`packages/core/src/output/formatter.ts:6-11`） | Agent 每次都要记得加 `--output json`，或预先设置 `DASHSCOPE_OUTPUT`；忘了就得去解析自由文本 |
-| F4 | 错误对象只有数字码 | `{"error":{"code":3,"message":"No API key found.","hint":"Set DASHSCOPE_API_KEY, …\nbl auth login …"}}` | 同一个退出码 3 下的不同原因（缺 key、key 无效、key 过期）无法区分；hint 是多行文本，修复命令要靠 Agent 自己抽取 |
+| F4 | 本地错误只有数字码 | 本地错误：`{"error":{"code":3,"message":"No API key found.","hint":"Set DASHSCOPE_API_KEY, …\nbl auth login …"}}`。服务端错误已带 `http_status`、`api_code`、`request_id`，但退出码一律为 1（见 `bailian-cli-code-review.md` B4） | 同一个退出码下的不同原因（缺 key、key 无效、key 过期）无法区分；hint 是多行文本，修复命令要靠 Agent 自己抽取 |
 | F5 | 未知参数没有建议 | `bl text chat --mesage hi` 返回 `Unknown flag "--mesage". Run with --help…` | 命令拼错时有建议，参数拼错却没有，Agent 只能再读一遍 help |
 | F6 | Schema 没有结构化的默认值和输出结构 | flag 只有 `description / type / valueHint / required / choices` 五个键；默认值只写在描述里，如「(default: 4096)」；`constraints.crossFlagValidation: "not-exported"` | Agent 无法可靠地知道默认行为，也无法预知结果有哪些字段 |
 | F7 | 运行时自动升级 | `versionCheckStage` 在大版本差距时调用 `performAutoUpdate`（`packages/runtime/src/middleware.ts:299-330`），只有设置 `NO_UPDATE_NOTIFIER=1` 才关闭 | 同一个 Agent 任务的前后两次调用可能跑在不同大版本上，结果不可复现 |
