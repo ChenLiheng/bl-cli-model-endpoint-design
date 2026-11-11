@@ -10,5 +10,6 @@ bailian-cli（`bl`）相关的设计与评估文档。
 | [bailian-cli-code-review.md](bailian-cli-code-review.md) | 代码审查：疑似 Bug（含复现步骤）、设计问题与优化点 |
 | [freetier-autostop-guard-review.md](freetier-autostop-guard-review.md) | 分支审查：`feat/freetier-autostop-guard`（`30f32bbe`）的问题与解决方案 |
 | [telemetry-device-id-persistence.md](telemetry-device-id-persistence.md) | 实施方案：遥测 `device_id` 改为本地持久化 UUID，含参考实现对比、完整代码与测试改动 |
+| [telemetry-uid-lock-review.md](telemetry-uid-lock-review.md) | PR 审查：`modelstudioai/cli` PR #314 中 `telemetry-uid` 的 mkdir 锁问题，及无锁、带锁两种落地方案（含完整代码与压测结果） |
 
 代码基线：`modelstudioai/cli` main `cadc301d`（v2.8.4）。状态：讨论稿。
