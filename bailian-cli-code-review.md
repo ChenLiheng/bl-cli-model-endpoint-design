@@ -120,7 +120,7 @@
 | O1 | 启动时加载全部命令 | 构建产物 `packages/cli/dist/bailian.mjs` 一次性静态 import 了约 330 个命令实现；`--version` 也要 412 ms | 命令表只保留元数据，实现按命令路径动态 `import()`；`--version`、`--help` 走最短路径。具体哪些依赖最重未做精确剖析，建议先用 `node --cpu-prof` 定位 | 预计每次调用省 200–350 ms（推断） |
 | O2 | 遥测在命令结束后同步等待发送 | `core/src/telemetry/sink.ts:71-100`，每次最多等 1 秒；实测开启遥测比关闭多 214 ms | 事件先写入本地 `telemetry.jsonl`，由下一次调用或后台子进程批量发送，前台不等待 | 每次调用省约 200 ms |
 | O3 | 每个请求都把整个请求体 `JSON.stringify` 一遍，只为了查找 `oss://` | `core/src/client/http.ts:43-47`，之后 `:103-107` 又序列化一次 | 只序列化一次并复用结果，或由上传流程显式标记。含 base64 图片、音频时，内存峰值可降约一半 | 大请求的 CPU 和内存 |
-| O4 | Agent 友好度相关的开销 | 根级 `--introspect` 1,062,846 字节；`--help` 写 stderr，非 TTY 下仍带横幅；未知参数没有「你是不是想用」建议 | 见 [agent-friendly-cli-evaluation.md](agent-friendly-cli-evaluation.md) 的 P0 建议 | 上下文成本与自愈率 |
+| O4 | Agent 友好度相关的开销 | 根级 `--introspect` 1,062,846 字节；`--help` 写 stderr，非 TTY 下仍带横幅；未知参数没有「你是不是想用」建议 | 见 [agent-friendly-cli-evaluation.md](agent-friendly-cli-evaluation.md) 第五节的 A1、A2、A5 | 上下文成本与自愈率 |
 | O5 | 本地错误的 JSON 没有稳定的类型字段 | 服务端错误已带 `http_status`、`api_code`、`request_id`；但本地错误只有 `code`（退出码）、`message` 和多行文字 `hint` | 增加 `type`（如 `AUTH_MISSING_API_KEY`）和结构化的 `fix_commands[]` | 脚本与 Agent 的分支处理 |
 | O6 | 缺少覆盖以上问题的测试 | 现有测试未覆盖并发写配置、配置损坏后写入、代理环境下的 stderr、HTTP 状态码到退出码的映射 | 为 B1–B5 各加一个回归用例；并发用例可以直接起多个子进程 | 防止回退 |
 | O7 | lint 仍有 2 个警告 | `vp check`：0 个错误、2 个警告，都在 `tools/release/`（`restrict-template-expressions`） | 顺手清掉，保持零警告 | 信号更干净 |
