@@ -4,7 +4,7 @@
 
 ## 结论与范围
 
-结论：`video portrait`（VideoRetalk）和 `video style`（视频风格重绘）对照官方 API 文档逐项核对，请求结构、端点、参数名、取值范围、默认值、结果字段和任务状态处理都正确，没有阻塞性 bug。**`video retouch`（万相 2.1 VACE，`wanx2.1-vace-plus`）建议从本 PR 中整体移除**，移除后可以合并。其余问题建议在同一轮或后续 PR 中处理。
+结论：`video portrait`（VideoRetalk）和 `video style`（视频风格重绘）对照官方 API 文档逐项核对，请求结构、端点、参数名、取值范围、默认值、结果字段和任务状态处理都正确，没有阻塞性 bug；另有 6 个边界问题（B1–B6），其中 B1（轮询出错丢失 `task_id`）、B2（下载路径要等任务成功后才报错）可能导致重复计费或白等，建议合并前处理。**`video retouch`（万相 2.1 VACE，`wanx2.1-vace-plus`）建议从本 PR 中整体移除**，移除后可以合并。其余问题建议在同一轮或后续 PR 中处理。
 
 | # | 级别 | 问题 | 位置 | 建议 |
 | --- | --- | --- | --- | --- |
@@ -17,6 +17,12 @@
 | S3 | 建议 | `portrait` 看不出是"音频驱动口型"；`video style` 与 `video edit`（帮助里也写了风格转换）职责重叠 | `cli/src/commands.ts`、`skills/bailian-gen/SKILL.md` | 考虑改名为 `retalk` / `lipsync`；在两个命令的帮助里互相说明区别 |
 | S4 | 建议 | 结果里 `output_video_url` 既在 `output` 下又在顶层出现一次 | `video/specialized-shared.ts:153-161` | 顶层只保留统一的 `video_url` |
 | S5 | 建议 | `video style` 不支持本地文件，与 `portrait` 不一致 | `video/style.ts:148` | **保持现状即可**：风格重绘文档没写可以用临时存储上传，验证后再放开 |
+| B1 | 边界（中） | 轮询期间遇到网络抖动或 5xx，命令直接失败，报错里没有 `task_id`；提交后也没输出 `task_id`，用户只能重新提交，重复计费 | `video/specialized-shared.ts:120-136`、`shared/dashscope-task.ts:93-111` | 提交后立即输出 `task_id`；所有轮询错误都带上 `task_id` 和"勿重新提交"提示 |
+| B2 | 边界（中） | `--download` 指向目录或不可写路径时，要等任务成功（已计费）后才报错 | `video/specialized-shared.ts:148-150`、`runtime/src/utils/download.ts:18-37` | 在 `validate` 里提前检查 `--download` 路径 |
+| B3 | 边界（低） | `bl file upload --model videoretalk` 返回的 `oss://` 地址传给 `portrait`，报 "File not found: oss://..." | `video/specialized-shared.ts:51-68` | `oss://` 直接透传（`vision describe` 已这样处理） |
+| B4 | 边界（低） | `--async` 和 `--download`、`--poll-interval` 同时使用时，后两者被静默忽略 | `video/specialized-shared.ts:122-125` | 在 `validate` 里报冲突，或输出 warning |
+| B5 | 边界（低） | 第一次查询紧跟在提交之后，`UNKNOWN` 被当作终止状态；`--poll-interval` 大于剩余时间时，最后一次 sleep 会超出截止时间 | `shared/dashscope-task.ts:67`、`runtime/src/utils/polling.ts:48` | 首次查询前先等一个间隔；sleep 时长取间隔和剩余时间的较小值 |
+| B6 | 边界（低，非本 PR 引入） | 数字参数传空字符串时 `Number("")` 为 0，`--style ""` 被当作 0 接受；`0x3`、`1e0` 这类写法也能通过 | `runtime/src/args.ts:230-238` | 在通用参数解析里拒绝空字符串和非十进制写法，单独提 PR |
 
 PR 改动概览（17 个文件，+2770 / −4）：
 
@@ -135,6 +141,53 @@ PR 改动概览（17 个文件，+2770 / −4）：
 - **S3**：`portrait` 这个名字看不出是"音频驱动口型替换"，可以考虑 `retalk` 或 `lipsync`。`video style` 和 `video edit` 都涉及"风格转换"，建议在两个命令的帮助里各加一句说明区别：`style` 是 8 种预设风格的整体重绘，`edit` 是基于 prompt 的通用编辑。
 - **S4**：`specialized-shared.ts:153-161` 的结果先展开了整个 `taskResponse`（其中已有 `output.output_video_url`），又在顶层再写一次 `output_video_url`。顶层已经有统一的 `video_url`，可以去掉这次重复。
 - **S5**：`style.ts:148` 用 `allowLocal: false` 拒绝本地文件，和 `portrait` 不一致，但有依据：VideoRetalk 文档明确写了可以用临时存储空间上传，风格重绘文档没写。保持现状；等实测验证 `video-style-transform` 能解析 `oss://` 地址后再放开，放开时只需把 `allowLocal` 改为 `true` 并加上 `resolveMediaUrl`。
+
+## B1–B6：边界情况
+
+### B1：轮询中途出错会丢失 `task_id`（中）
+
+`runSpecializedVideoLifecycle` 提交成功后没有输出 `task_id`（`specialized-shared.ts:120-136`），直接进入轮询。`pollDashScopeTask` 只把超时类错误包装成带 `task_id` 的报错（`dashscope-task.ts:93-111`）。以下情况都会让命令直接失败，而且报错里没有 `task_id`：
+
+- 某次查询遇到网络抖动（ECONNRESET 等）或网关 5xx；
+- 用户按 Ctrl+C 中断；
+- 任务 `FAILED`（报错里只有 `requestId`）。
+
+这两个模型的任务通常要跑几分钟，轮询下限又是 600 秒，期间出现一次抖动的概率不低。服务端任务仍在执行，但用户拿不到 `task_id`，只能重新提交，**重复计费**。下载失败的路径（`downloadDashScopeTaskResult`）已经正确带上了 `task_id` 和"勿重新提交"提示，轮询这条路径也应该一样。
+
+建议：
+
+1. 提交成功后立即 `ctx.output.progress` 输出 `task_id`。
+2. `pollDashScopeTask` 的 catch 对所有错误都附加 `task_id`，并给出 `bl video task get <task_id>` / `bl video download <task_id>` 的提示。
+3. 可选：单次查询失败时重试几次再放弃。
+
+### B2：`--download` 路径问题要等任务成功后才暴露（中）
+
+`downloadFile` 的 `resolveDownloadTarget`（`runtime/src/utils/download.ts:18-37`）在目标已存在、但不是普通文件时（比如目录）报 "Download destination must be a regular file"。这个检查发生在任务成功之后，用户已经等了几分钟、模型也已计费。目标目录没有写权限时同样如此。
+
+```bash
+bl video portrait --video a.mp4 --audio a.wav --download ./out/   # ./out 是已有目录
+```
+
+建议在 `validate` 里提前检查：`--download` 已存在且不是普通文件时直接报 usage 错误；父目录存在但不可写时也提前报错。错误发生在下载阶段时，现有提示已经能让用户用 `task_id` 重新下载，这一点是好的。
+
+### B3：`oss://` 地址被当作本地路径（低）
+
+`mediaInputError` 把所有非 http(s) 的值都当本地路径处理（`specialized-shared.ts:51-68`）。用户先用 `bl file upload --file a.mp4 --model videoretalk` 拿到 `oss://` 地址，再传给 `portrait`，会得到 "File not found: oss://..."。而 core 的 `isLocalFile` 已经把 `oss://` 视为远程地址，`vision describe` 也直接透传 `oss://`。
+
+建议：`portrait` 接受 `oss://` 并原样透传，http 层会自动加 `X-DashScope-OssResourceResolve`。`style` 维持 `allowLocal: false` 时，`oss://` 也应给出"仅支持公网 URL"的明确报错，而不是 "File not found"。
+
+### B4：`--async` 与 `--download`、`--poll-interval` 冲突时静默忽略（低）
+
+`--async` 在提交后直接返回（`specialized-shared.ts:122-125`），同时传入的 `--download`、`--poll-interval` 不生效，也没有任何提示。脚本或 Agent 可能以为文件已经保存。建议在 `validate` 里把这种组合当作 usage 错误，或至少输出 warning。
+
+### B5：轮询节奏的两个小问题（低）
+
+- 提交后立刻发起第一次查询。如果服务端短时间内还查不到任务、返回 `UNKNOWN`，会被当作终止状态直接报错（`dashscope-task.ts:67`）。VideoRetalk 文档对 `UNKNOWN` 的解释是"作业不存在或状态未知"。建议首次查询前先等一个轮询间隔，或者前几次遇到 `UNKNOWN` 时继续等待。
+- `poll` 在循环末尾固定 sleep `intervalSec`（`runtime/src/utils/polling.ts:48`）。用户传很大的 `--poll-interval` 时，最后一次 sleep 会超出截止时间。建议 sleep 取 `min(intervalSec, 剩余时间)`。
+
+### B6：数字参数的解析宽松（低，非本 PR 引入）
+
+通用参数解析用 `Number(value)`（`runtime/src/args.ts:230-238`）：`Number("")` 为 0，所以 `--style ""` 会被当作 `--style 0` 接受，`--style 0x3`、`--style 1e0` 也能通过整数校验。这是 runtime 的通用问题，不是本 PR 引入的，但 `--style` 这类枚举型数字参数更容易踩到。建议单独提 PR，在通用解析里拒绝空字符串和非十进制写法。
 
 ## 做得好的地方
 
