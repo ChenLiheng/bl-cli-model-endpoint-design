@@ -4,7 +4,7 @@
 
 ## 结论与范围
 
-结论：`video portrait`（VideoRetalk）和 `video style`（视频风格重绘）对照官方 API 文档逐项核对，请求结构、端点、参数名、取值范围、默认值、结果字段和任务状态处理都正确，没有阻塞性 bug；另有 6 个边界问题（B1–B6），其中 B1（轮询出错丢失 `task_id`）、B2（下载路径要等任务成功后才报错）可能导致重复计费或白等，建议合并前处理。**`video retouch`（万相 2.1 VACE，`wanx2.1-vace-plus`）建议从本 PR 中整体移除**，移除后可以合并。其余问题建议在同一轮或后续 PR 中处理。
+结论：`video portrait`（VideoRetalk）和 `video style`（视频风格重绘）对照官方 API 文档逐项核对，请求结构、端点、参数名、取值范围、默认值、结果字段和任务状态处理都正确，没有阻塞性 bug；另有 6 个边界问题（B1–B6），其中 B1（轮询出错丢失 `task_id`）、B2（下载路径要等任务成功后才报错）可能导致重复计费或白等，建议合并前处理。此外列出了与现有命令的一致性问题（C1–C5）、发布流程（D1–D3）和用户体验（U1–U2），以及本审查自身的局限（见"审查方法"）。**`video retouch`（万相 2.1 VACE，`wanx2.1-vace-plus`）建议从本 PR 中整体移除**，移除后可以合并。其余问题建议在同一轮或后续 PR 中处理。
 
 | # | 级别 | 问题 | 位置 | 建议 |
 | --- | --- | --- | --- | --- |
@@ -23,6 +23,16 @@
 | B4 | 边界（低） | `--async` 和 `--download`、`--poll-interval` 同时使用时，后两者被静默忽略 | `video/specialized-shared.ts:122-125` | 在 `validate` 里报冲突，或输出 warning |
 | B5 | 边界（低） | 第一次查询紧跟在提交之后，`UNKNOWN` 被当作终止状态；`--poll-interval` 大于剩余时间时，最后一次 sleep 会超出截止时间 | `shared/dashscope-task.ts:67`、`runtime/src/utils/polling.ts:48` | 首次查询前先等一个间隔；sleep 时长取间隔和剩余时间的较小值 |
 | B6 | 边界（低，非本 PR 引入） | 数字参数传空字符串时 `Number("")` 为 0，`--style ""` 被当作 0 接受；`0x3`、`1e0` 这类写法也能通过 | `runtime/src/args.ts:230-238` | 在通用参数解析里拒绝空字符串和非十进制写法，单独提 PR |
+| C1 | 一致性 | 结果输出整个任务响应，和 `video edit` / `video generate` 的精简字段不一致 | `video/specialized-shared.ts:153-163` | 对齐为 `task_id`、`video_url`、`status`、`saved`、`size` |
+| C2 | 一致性 | 不传 `--download` 也会自动下载；`video edit` 只在传了 `--download` 时下载 | `video/specialized-shared.ts:148-150`、`video/edit.ts:285` | 统一视频命令组的默认下载行为，并在帮助里写明 |
+| C3 | 一致性 | `style` 用 `--min-len 540` 直接沿用 API 字段名；`video edit` / `video generate` 用 `--resolution 720P` | `video/style.ts`、`video/edit.ts:71` | 改为 `--resolution 540P\|720P`，内部映射为 `min_len` |
+| C4 | 一致性 | 模型写死，没有 `--model`；其他视频命令都能换模型 | `video/portrait.ts`、`video/style.ts` | 保留隐藏的 `--model` 覆盖，默认值不变 |
+| C5 | 一致性 | `--poll-interval` 校验在两个命令里各复制一份 | `video/portrait.ts:113`、`video/style.ts:118` | 挪到 `specialized-shared.ts` |
+| D1 | 发布 | 没有更新 `CHANGELOG.md` / `CHANGELOG.zh.md` | — | 在"新增"下补两个命令 |
+| D2 | 发布 | 需确认 skill 的 `reference/*.md` 是否由 `generate:reference` 生成，而不是手改 | `skills/bailian-gen/reference/` | 运行 `pnpm sync:skill-assets` 后确认没有 diff |
+| D3 | 发布 | 本审查没能确认 CI 状态 | — | 合并前确认 CI 通过 |
+| U1 | 体验 | 没有费用提示：按视频时长计费，720P 比 540P 贵，超分不另收费 | `video/style.ts`、`video/portrait.ts` | notes 里补上计费说明和价格页链接 |
+| U2 | 体验 | `video edit` 的帮助里还写着"风格转换"，用户找风格重绘时可能发现不了 `video style` | `video/edit.ts`、`skills/bailian-gen/SKILL.md` | 两个命令的帮助互相引用（见 S3） |
 
 PR 改动概览（17 个文件，+2770 / −4）：
 
@@ -42,6 +52,14 @@ PR 改动概览（17 个文件，+2770 / −4）：
   - 视频风格重绘：<https://docs.bailian.console.aliyun.com/zh/model-studio/video-style-transform-api-reference>
   - 万相 2.1 视频编辑（VACE）：<https://help.aliyun.com/zh/model-studio/wanx-vace-api-reference>
 - **没有运行测试**：审查环境的权限不允许安装依赖、执行测试。live e2e 也没有运行（需要真实 API Key）。
+
+本审查的局限（后续 reviewer 需要注意）：
+
+- **测试没跑，也没真实调用**：所有结论都来自读代码和对照文档。
+- **`retouch.ts` 没有逐行审查**：R1 的移除建议基于需求范围和模型版本，不是因为代码有错。如果作者坚持保留，这部分需要补审。
+- **VideoRetalk 文档的来源不同**：用的是 help.aliyun.com 上的版本，docs.bailian.console.aliyun.com 的同名页面在审查环境里连不上，理论上两边内容可能不同步。
+- **B1、B2 没有实际复现**：这两条是从代码调用链推断的，建议实际跑一次确认（比如轮询期间断网、`--download` 指向已有目录）。
+- **CI 状态没有确认**：`modelstudioai/cli` 不在审查会话的 GitHub 权限范围内，查不到 CI 结果（见 D3）。
 
 ## 与官方文档的逐项核对
 
@@ -188,6 +206,45 @@ bl video portrait --video a.mp4 --audio a.wav --download ./out/   # ./out 是已
 ### B6：数字参数的解析宽松（低，非本 PR 引入）
 
 通用参数解析用 `Number(value)`（`runtime/src/args.ts:230-238`）：`Number("")` 为 0，所以 `--style ""` 会被当作 `--style 0` 接受，`--style 0x3`、`--style 1e0` 也能通过整数校验。这是 runtime 的通用问题，不是本 PR 引入的，但 `--style` 这类枚举型数字参数更容易踩到。建议单独提 PR，在通用解析里拒绝空字符串和非十进制写法。
+
+## C1–C5：与现有命令的一致性
+
+### C1：输出格式不统一
+
+`video edit` 的结果是精简字段（`edit.ts:291-297`）：
+
+```json
+{ "task_id": "...", "video_url": "...", "status": "SUCCEEDED", "saved": "out.mp4", "size": "3.2 MB" }
+```
+
+`portrait` / `style` 则把整个 `taskResponse` 展开输出（`output`、`usage`、`request_id` 等），再在顶层补 `task_id`、`video_url`、`saved`，`style` 还会再补一次 `output_video_url`（`specialized-shared.ts:153-163`）。脚本或 Agent 解析同一组 `video` 命令时要写两套逻辑。建议对齐为上面的精简字段；`usage`（计费时长等）如果有用，可以单独保留一个 `usage` 字段。和 S4 一起处理。
+
+### C2：默认下载行为不一致
+
+`portrait` / `style` 不传 `--download` 也会下载到输出目录（`<output-dir>/videos/<task_id>.mp4`）；`video edit` 只在传了 `--download` 时才下载（`edit.ts:285`），`video generate` 则会自动保存。视频命令组内部本来就不统一，这个 PR 选了"自动下载"。建议在 PR 里明确这个选择，并在帮助文本中写明默认保存位置；长期应统一整个 `video` 命令组的行为。
+
+### C3：参数命名沿用 API 字段名
+
+`style` 的 `--min-len 540|720` 直接沿用 API 的 `min_len`，用户不容易看出这是分辨率。`video edit`（`edit.ts:71`）和 `video generate`（`generate.ts:89`）都用 `--resolution 720P`。建议改为 `--resolution 540P|720P`，内部映射为 `min_len`。`--fps`（`video_fps`）和 `--super-resolution`（`use_SR`）的命名已经是面向用户的，可以保持。
+
+### C4：没有 `--model`
+
+两个命令的模型都写死（`portrait.ts` 的 `MODEL = "videoretalk"`，`style.ts` 的 `MODEL = "video-style-transform"`），而其他视频命令都支持 `--model`。以后出了新版本，就得改代码发版才能用。建议保留一个隐藏或高级的 `--model` 覆盖参数，默认值不变。注意 `portrait` 上传本地文件时也要用这个模型名（`resolveMediaUrl(..., MODEL)`），覆盖时要一并替换。
+
+### C5：重复的校验代码
+
+`--poll-interval` 的校验在 `portrait.ts:113` 和 `style.ts:118` 各复制了一份。既然已经有 `specialized-shared.ts`，建议把它和 `--poll-interval`、`--download`、`--async` 这几个共有参数的定义一起挪进去，B2、B4 的新校验也放在那里。
+
+## D1–D3：发布流程
+
+- **D1**：仓库每个版本都在 `CHANGELOG.md` 和 `CHANGELOG.zh.md` 的"新增"下记录新命令（如 2.11.0 的 `--biz-from`、2.10.5 的 `bl deploy router`），本 PR 两个文件都没改。建议补上 `bl video portrait`、`bl video style` 两条，并写明只支持北京地域。
+- **D2**：`packages/cli/package.json` 里的 `generate:reference` 会从命令定义生成 `skills/*/reference/*.md`。需要确认 PR 里的 `reference/video.md`、`reference/index.md` 是脚本生成的，而不是手改：手改的话，下次重新生成会被覆盖，或者和代码对不上。验证方法：在 PR 分支运行 `pnpm sync:skill-assets`，确认没有新的 diff。移除 retouch 后也要重新生成一次。
+- **D3**：合并前确认 CI（`vp check`、单测、e2e）全部通过。本审查没能查看 CI。
+
+## U1–U2：产品与用户体验
+
+- **U1 费用提示**：两个模型都按生成的视频时长计费。风格重绘的 720P 比 540P 贵；`min_len=540` 时开启 `use_SR` 会输出 1080P，但仍按 540P 计费。帮助文本里都没提，用户用 `--min-len` 时不知道价格有差别。建议在 notes 里补一句计费说明，并附上价格页链接。
+- **U2 新命令不好找**：`bl video edit` 的帮助和 skill 文档里还写着"风格转换"，用户想做风格重绘时更可能先找到 `video edit`，发现不了 `video style`。建议在 `video edit` 的帮助里加一句"预设漫画、水墨等风格的整体重绘请用 `bl video style`"，在 `video style` 里反向引用 `video edit`。和 S3 一起处理。
 
 ## 做得好的地方
 
