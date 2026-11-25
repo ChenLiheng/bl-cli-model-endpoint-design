@@ -4,6 +4,7 @@ bailian-cli（`bl`）相关的设计与评估文档。
 
 | 文档 | 内容 |
 | --- | --- |
+| [AGENT.md](AGENT.md) | Agent 工作约束：本仓库只用于审查第三方仓库 PR 和书写计划；对第三方仓库只读，禁止提交代码、评论等任何操作；审查结论落地到一个文档 |
 | [model-endpoint-proposal.md](model-endpoint-proposal.md) | 改造方案：现状、目标设计、迁移、风险、待讨论决策 |
 | [model-endpoint-implementation.md](model-endpoint-implementation.md) | 落地实现方案：按 Step 的代码改动、多方案待取舍、测试与发布清单 |
 | [agent-friendly-cli-evaluation.md](agent-friendly-cli-evaluation.md) | CLI 的 Agent 友好度评估标准（ACF Score）、bailian-cli 评估，以及分阶段的详细优化方案 |
