@@ -35,7 +35,7 @@
 
 ## PR 是否解决了问题（前后对比）
 
-实验脚本放在 scratchpad，没有提交，按 PR 自带的 e2e harness 改写。三种退出方式：
+实验脚本按 PR 自带的 e2e harness 改写，放在本地临时目录中运行，用完已删除，没有提交。三种退出方式：
 
 - `plain`：只 `await cli.run()`，即 main 上 `bl` 入口的行为；
 - `naive`：`run()` 之后直接 `process.exit(0)`，即 PR #306 的做法；
