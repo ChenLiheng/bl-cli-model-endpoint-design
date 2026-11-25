@@ -17,6 +17,7 @@ bailian-cli（`bl`）相关的设计与评估文档。
 | [embedding-rerank-implementation-plan.md](embedding-rerank-implementation-plan.md) | 实现计划：文本/多模态向量（`bl embedding text\|multimodal`）与重排序（`bl rerank`）；含接口速查、命令设计、模型能力表、文件改动清单、按步骤的实施顺序，以及 30+ 条坑位与待验证项 |
 | [telemetry-device-id-persistence.md](telemetry-device-id-persistence.md) | 实施方案：遥测 `device_id` 改为本地持久化 UUID，含参考实现对比、完整代码与测试改动 |
 | [pr-306-exit-after-run-review.md](pr-306-exit-after-run-review.md) | PR 审查：`modelstudioai/cli` PR #306（`38e4d91f`）成功路径主动退出（Issue #294 进程滞留约 50 秒）；含 Bun 下管道输出被截断的实测、更新检查延迟与 registry 配置问题、各问题的解决方案与分环境复现/测试方法 |
+| [pr-348-flush-before-exit-review.md](pr-348-flush-before-exit-review.md) | PR 审查：`modelstudioai/cli` PR #348（`2db845f`）退出前刷新 stdout/stderr（`runToExit`）；含 Ctrl-C 后退出码被 `exit(0)` 覆盖、`handleError` 公开 API 破坏性变更、超时警告污染 JSON 输出等问题的解决方案 |
 | [telemetry-uid-lock-review.md](telemetry-uid-lock-review.md) | PR 审查：`modelstudioai/cli` PR #314 中 `telemetry-uid` 的 mkdir 锁问题，及无锁、带锁两种落地方案（含完整代码与压测结果） |
 
 代码基线：`modelstudioai/cli` main `cadc301d`（v2.8.4）。状态：讨论稿。
